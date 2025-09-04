@@ -1,0 +1,41 @@
+name: deploy
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rsync to server
+        uses: burnett01/rsync-deployments@7.0.1
+        with:
+          switches: -az --delete --exclude=".git" --exclude="node_modules" --exclude="vendor" --exclude=".env" --exclude="storage/logs" --exclude="public/storage"
+          path: ./
+          remote_path: ${{ secrets.APP_PATH }}
+          remote_host: ${{ secrets.SSH_HOST }}
+          remote_user: ${{ secrets.SSH_USER }}
+          remote_key: ${{ secrets.SSH_KEY }}
+          remote_port: ${{ secrets.SSH_PORT }}
+
+      - name: Post-deploy tasks
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          script: |
+            cd ${{ secrets.APP_PATH }}
+            php -v
+            composer install --no-interaction --prefer-dist --no-dev
+            php artisan migrate --force
+            php artisan config:cache
+            php artisan route:cache
+            php artisan view:cache
+            # npm ci && npm run build  # 必要なら
+            # php-fpm / nginx 再読み込み等
